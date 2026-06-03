@@ -1,0 +1,5 @@
+PyQt6>=6.5,<7.0
+requests>=2.31,<3.0
+urllib3>=1.26,<2.0
+tldextract>=5.0,<6.0
+

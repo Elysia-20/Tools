@@ -131,10 +131,23 @@ def _sanitize_error(text: str) -> str:
 
 
 class _EarlyExit(BaseException):
-    # run() 内部提前退出，携带需要 emit 的 8 元组参数
-    # 继承 BaseException 避免被 except Exception 捕获
-    def __init__(self, *emit_args):
-        self.emit_args = emit_args
+    # run() 内部提前退出，携带需要 emit 的结果字段（对应 result_signal 的 8 个参数）。
+    # 继承 BaseException 避免被 except Exception 捕获。
+    def __init__(self, row, url, status='', title='', banner='', ip='', error='', length=''):
+        self.row = row
+        self.url = url
+        self.status = status
+        self.title = title
+        self.banner = banner
+        self.ip = ip
+        self.error = error
+        self.length = length
+
+    @property
+    def emit_args(self) -> tuple:
+        # 按 result_signal 的参数顺序返回 8 元组
+        return (self.row, self.url, self.status, self.title,
+                self.banner, self.ip, self.error, self.length)
 
 
 @dataclass
@@ -378,8 +391,11 @@ class UrlCheckWorker(QThread):
     def _prepare_urls(self) -> Tuple[list, bool, Optional[str]]:
         # 准备URL列表并进行验证
         # 返回: (urls_to_try, original_has_scheme, error_msg)
-        urls_to_try = normalize_url(self.url)
+        urls_to_try, norm_error = normalize_url(self.url)
         original_has_scheme = self.url.strip().startswith(('http://', 'https://'))
+
+        if norm_error:
+            return [], original_has_scheme, norm_error
 
         # 可选：当用户显式输入 https:// 时，允许在失败时额外尝试 http://
         if self.downgrade_https and self.url.strip().lower().startswith('https://') and len(urls_to_try) == 1:
@@ -711,12 +727,6 @@ class UrlCheckWorker(QThread):
         last_error = ''
         last_emit_url = self.url  # 最终失败时 emit 的 URL，避免取到"带错误描述"的哨兵字符串
         for norm_url in urls_to_try:
-            # 检查是否为错误信息（格式: "原始URL [错误描述]"）
-            # 有效URL不含空格，空格+方括号组合可可靠识别错误标记
-            if ' [' in norm_url and norm_url.endswith(']') and ' ' in norm_url:
-                last_error = norm_url.split(' [', 1)[1][:-1]
-                continue
-
             # 仅用于格式校验，不保留返回值
             try:
                 urlparse(norm_url)
@@ -815,11 +825,11 @@ class UrlCheckWorker(QThread):
                     return
 
             except _EarlyExit as e:
-                # 对 _EarlyExit 的 8 元组里的 error 字段做脱敏再转发
-                args = list(e.emit_args)
-                if len(args) >= 7:
-                    args[6] = _sanitize_error(args[6])
-                self.result_signal.emit(*args)
+                # 按 result_signal 顺序转发，error 字段脱敏后再发出
+                self.result_signal.emit(
+                    e.row, e.url, e.status, e.title, e.banner, e.ip,
+                    _sanitize_error(e.error), e.length,
+                )
                 return
             # 异常分类处理（精确定位错误类型）
             except requests.exceptions.TooManyRedirects:

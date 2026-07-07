@@ -1,7 +1,7 @@
 # URL验证和规范化的工具函数
 
 import ipaddress
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from urllib.parse import urlparse
 
 
@@ -136,46 +136,53 @@ def is_port_dangerous(port: int) -> Tuple[bool, str]:
     return False, ''
 
 
-def normalize_url(url: str, allow_dangerous_ports: bool = False) -> List[str]:
+def normalize_url(url: str, allow_dangerous_ports: bool = False) -> Tuple[List[str], Optional[str]]:
     # 规范化URL并返回要尝试的URL列表
     # Args:
     #   url: 原始URL
     #   allow_dangerous_ports: 是否允许危险端口（默认False）
     # Returns:
-    #   List[str]: 规范化后的URL列表，如果有错误则返回错误信息
+    #   Tuple[List[str], Optional[str]]: (要尝试的URL列表, 错误信息)。
+    #   校验失败时返回 ([], 错误信息)；成功时返回 (urls, None)。
     if not url or not url.strip():
-        return ['[空URL]']
-    
+        return [], '空URL'
+
     url = url.strip()
-    
+
     # 提取端口号（用 urlparse 替代正则，正确处理 IPv6、路径等边界情况）
     to_parse = url if '://' in url else f'http://{url}'
     try:
         port_num = urlparse(to_parse).port
     except ValueError:
-        return [f"{url} [无效端口号: 超出1-65535范围或格式错误]"]
+        return [], '无效端口号: 超出1-65535范围或格式错误'
 
     if port_num is not None:
         # 检查端口0（urlparse 对 >65535 已抛 ValueError，此处只需处理 0）
         if port_num == 0:
-            return [f"{url} [无效端口号: 端口0不允许使用]"]
+            return [], '无效端口号: 端口0不允许使用'
 
         # 检查危险端口（除非明确允许）
         if not allow_dangerous_ports:
             is_dangerous, service_name = is_port_dangerous(port_num)
             if is_dangerous:
-                return [f"{url} [不安全端口: {port_num} ({service_name}) 已被浏览器限制]"]
-    
+                return [], f'不安全端口: {port_num} ({service_name}) 已被浏览器限制'
+
     # 返回规范化的URL（默认优先https，再回退http）
     # scheme 判断应大小写不敏感，兼容 HTTP://example.com
     # 对显式的非 http/https 协议直接报错，避免拼接出无效URL
-    parsed_for_scheme = urlparse(url)
-    scheme = parsed_for_scheme.scheme.lower()
-    if scheme in ('http', 'https'):
-        return [url]
-    if scheme:
-        return [f"{url} [不支持的协议: {scheme}]"]
-    return [f'https://{url}', f'http://{url}']
+    if '://' in url:
+        scheme = urlparse(url).scheme.lower()
+        if scheme in ('http', 'https'):
+            return [url], None
+        return [], f'不支持的协议: {scheme}'
+
+    # 无 '://'：可能是裸域名/IP，或 host:port，也可能是 mailto:/tel: 这类无斜杠协议。
+    # urlparse 会把 "example.com:8080" 的 "example.com" 误当作 scheme，因此不能只看
+    # scheme 是否非空；冒号后是端口数字时视为 host:port（无 scheme），交给下面拼 https/http。
+    raw_scheme = urlparse(url).scheme
+    if raw_scheme and not url[len(raw_scheme) + 1:][:1].isdigit():
+        return [], f'不支持的协议: {raw_scheme.lower()}'
+    return [f'https://{url}', f'http://{url}'], None
 
 
 def url_sort_key(text: str) -> Tuple[object, ...]:

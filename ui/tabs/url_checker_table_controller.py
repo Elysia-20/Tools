@@ -35,8 +35,6 @@ class UrlCheckerTableController:
         if not file_path:
             return
 
-        from workers.url_worker import sanitize_url_for_export
-
         try:
             with open(file_path, "w", encoding="utf-8-sig", newline="") as file_obj:
                 writer = csv.writer(file_obj)

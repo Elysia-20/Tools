@@ -15,68 +15,78 @@ class TestNormalizeUrl(unittest.TestCase):
 
     def test_simple_domain(self):
         """测试简单域名"""
-        result = normalize_url("example.com")
+        result, err = normalize_url("example.com")
+        self.assertIsNone(err)
         self.assertIn("https://example.com", result)
         self.assertIn("http://example.com", result)
 
     def test_with_http_scheme(self):
         """测试带http协议的URL"""
-        result = normalize_url("http://example.com")
-        self.assertEqual(result, ["http://example.com"])
+        self.assertEqual(normalize_url("http://example.com"), (["http://example.com"], None))
 
     def test_with_https_scheme(self):
         """测试带https协议的URL"""
-        result = normalize_url("https://example.com")
-        self.assertEqual(result, ["https://example.com"])
+        self.assertEqual(normalize_url("https://example.com"), (["https://example.com"], None))
 
     def test_with_uppercase_scheme(self):
         """测试大写协议也应被识别为已带 scheme"""
-        result = normalize_url("HTTP://example.com")
-        self.assertEqual(result, ["HTTP://example.com"])
+        self.assertEqual(normalize_url("HTTP://example.com"), (["HTTP://example.com"], None))
 
     def test_with_unsupported_scheme_ftp(self):
         """测试非 http/https 协议应返回明确错误"""
-        result = normalize_url("ftp://example.com")
-        self.assertEqual(result, ["ftp://example.com [不支持的协议: ftp]"])
+        result, err = normalize_url("ftp://example.com")
+        self.assertEqual(result, [])
+        self.assertEqual(err, "不支持的协议: ftp")
 
     def test_with_unsupported_scheme_mailto(self):
         """测试 mailto 协议应返回明确错误"""
-        result = normalize_url("mailto:test@example.com")
-        self.assertEqual(result, ["mailto:test@example.com [不支持的协议: mailto]"])
+        result, err = normalize_url("mailto:test@example.com")
+        self.assertEqual(result, [])
+        self.assertEqual(err, "不支持的协议: mailto")
 
     def test_with_port(self):
         """测试带端口的URL"""
-        result = normalize_url("example.com:8080")
+        result, err = normalize_url("example.com:8080")
+        self.assertIsNone(err)
         self.assertTrue(any("8080" in url for url in result))
 
     def test_with_path(self):
         """测试带路径的URL"""
-        result = normalize_url("example.com/path/to/page")
+        result, err = normalize_url("example.com/path/to/page")
+        self.assertIsNone(err)
         self.assertTrue(any("/path/to/page" in url for url in result))
 
     def test_empty_input(self):
         """测试空输入"""
-        result = normalize_url("")
-        # 空输入返回错误标记
-        self.assertTrue(len(result) > 0)
-        self.assertTrue(any('[' in url for url in result))
+        result, err = normalize_url("")
+        # 空输入返回空列表 + 错误信息
+        self.assertEqual(result, [])
+        self.assertIsNotNone(err)
 
     def test_whitespace_input(self):
         """测试空白输入"""
-        result = normalize_url("   ")
-        # 空白输入返回错误标记
-        self.assertTrue(len(result) > 0)
-        self.assertTrue(any('[' in url for url in result))
+        result, err = normalize_url("   ")
+        # 空白输入返回空列表 + 错误信息
+        self.assertEqual(result, [])
+        self.assertIsNotNone(err)
 
     def test_ip_address(self):
         """测试IP地址"""
-        result = normalize_url("192.168.1.1")
+        result, err = normalize_url("192.168.1.1")
+        self.assertIsNone(err)
         self.assertTrue(len(result) > 0)
 
     def test_ip_with_port(self):
         """测试IP地址带端口"""
-        result = normalize_url("192.168.1.1:8080")
+        result, err = normalize_url("192.168.1.1:8080")
+        self.assertIsNone(err)
         self.assertTrue(any("8080" in url for url in result))
+
+    def test_dangerous_port_returns_error(self):
+        """危险端口应返回错误信息而非 URL 列表"""
+        result, err = normalize_url("example.com:22")
+        self.assertEqual(result, [])
+        self.assertIn("不安全端口", err)
 
 
 class TestDangerousPorts(unittest.TestCase):

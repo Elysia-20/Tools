@@ -23,9 +23,12 @@ class TestEarlyExit(unittest.TestCase):
     """_EarlyExit 异常测试"""
 
     def test_carries_args(self):
-        """测试携带 emit 参数"""
-        e = _EarlyExit(0, 'url', '200', 't', 'b', '1.1.1.1', '', '', '10 bytes')
-        self.assertEqual(e.emit_args, (0, 'url', '200', 't', 'b', '1.1.1.1', '', '', '10 bytes'))
+        """测试携带 emit 参数（具名字段 + emit_args 元组）"""
+        e = _EarlyExit(0, 'url', '200', 't', 'b', '1.1.1.1', 'err', '10 bytes')
+        self.assertEqual(e.emit_args, (0, 'url', '200', 't', 'b', '1.1.1.1', 'err', '10 bytes'))
+        self.assertEqual(e.ip, '1.1.1.1')
+        self.assertEqual(e.error, 'err')
+        self.assertEqual(e.length, '10 bytes')
 
     def test_is_base_exception(self):
         """测试继承 BaseException（不被 except Exception 捕获）"""
